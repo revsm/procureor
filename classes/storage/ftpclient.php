@@ -177,14 +177,12 @@ class ProcuFTPClient
                     // "www -> ."    "mnegrecy.bget.ru/public_html/www -> ."    l    lrwxrwxrwx    60500    601    1    1421182800
                     "fullpath" => $path . $fields[8],
                     "type" => $fields[0]{0},
-                    "permissions" => permissionToOct($fields[0]), // TODO: convert into number
+                    "permissions" => $this->permStrToOct($fields[0]), // TODO: convert into number
                     "owner" => $fields[2],
                     "usergroup" => $fields[3],
                     "size" => $fields[4],
                     "date" => mktime($hour, $minute, 0, $this->months[$fields[5]], $fields[6], $year) // TODO: check for valid values
                 );
-                
-                print_r($fields);
                 
                 array_push($this->listing_cache, $ftp_entry);
                 
