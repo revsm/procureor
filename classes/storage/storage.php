@@ -181,9 +181,13 @@ $cred['username'] = 'user';
 $cred['password'] = 'pass';
 $cred['host']     = 'host';
 $cred['path']     = '/';
+$mask = 'wp*.php';
+
+// Testing cred include
+include "../../test.php";
 
 $test_storage = new ProcuStorage(PROCUSTORAGE_IFACE_FTP, $cred);
 $test_storage->prepare(true);
-$list = $test_storage->findByName('wp*.php');
+$list = $test_storage->findByName($mask);
 $test_storage->rm($list);
 $test_storage->finalize();

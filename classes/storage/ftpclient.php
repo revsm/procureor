@@ -177,12 +177,14 @@ class ProcuFTPClient
                     // "www -> ."    "mnegrecy.bget.ru/public_html/www -> ."    l    lrwxrwxrwx    60500    601    1    1421182800
                     "fullpath" => $path . $fields[8],
                     "type" => $fields[0]{0},
-                    "permissions" => $fields[0], // TODO: convert into number
+                    "permissions" => permissionToOct($fields[0]), // TODO: convert into number
                     "owner" => $fields[2],
                     "usergroup" => $fields[3],
                     "size" => $fields[4],
                     "date" => mktime($hour, $minute, 0, $this->months[$fields[5]], $fields[6], $year) // TODO: check for valid values
                 );
+                
+                print_r($fields);
                 
                 array_push($this->listing_cache, $ftp_entry);
                 
@@ -210,5 +212,30 @@ class ProcuFTPClient
         return PR_LISTING_CACHE_FILE;
     }
     
+    private function permStrToOct($str)
+    {
+		if (strlen($str) != 10)
+			return false;
+        $mode = 0;
+        if ($str[1] == "r") $mode += 0400;
+        if ($str[2] == "w") $mode += 0200;
+        if ($str[3] == "x") $mode += 0100;
+        else if ($str[3] == "s") $mode += 04100;
+        else if ($str[3] == "S") $mode += 04000;
+		
+        if ($str[4] == "r") $mode += 040;
+        if ($str[5] == "w") $mode += 020;
+        if ($str[6] == "x") $mode += 010;
+		else if ($str[6] == "s") $mode += 02010;
+		else if ($str[6] == "S") $mode += 02000;
+		
+        if ($str[7] == "r") $mode += 04;
+        if ($str[8] == "w") $mode += 02;
+        if ($str[9] == "x") $mode += 01;
+        else if ($str[9] == "t") $mode += 01001;
+        else if ($str[9] == "T") $mode += 01000;
+ 
+        return sprintf("%04o", $mode);
+    }
 } // end of class
  
