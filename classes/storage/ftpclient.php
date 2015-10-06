@@ -28,12 +28,17 @@ class ProcuFTPClient
     private $systype;
     
     private $months;
+
+    private $tz_offset;
     
     private $state = PR_FTP_STATE_DISCONNECTED;
     private $status = PR_FTP_STATUS_NOT_READY;
     
     function __construct($connect_data)
     {
+
+        $this->tz_offset = timezone_offset_get( timezone_open( date_default_timezone_get() ), new DateTime() );
+
         $this->FTP_STATE_NAME  = array(
             0 => 'DISCONNECTED',
             1 => 'CONNECTED',
@@ -48,18 +53,18 @@ class ProcuFTPClient
         );
         
         $this->months = array(
-            "Jan" => 0,
-            "Feb" => 1,
-            "Mar" => 2,
-            "Apr" => 3,
-            "May" => 4,
-            "Jun" => 5,
-            "Jul" => 6,
-            "Aug" => 7,
-            "Sep" => 8,
-            "Oct" => 9,
-            "Nov" => 10,
-            "Dec" => 11
+            "Jan" => 1,
+            "Feb" => 2,
+            "Mar" => 3,
+            "Apr" => 4,
+            "May" => 5,
+            "Jun" => 6,
+            "Jul" => 7,
+            "Aug" => 8,
+            "Sep" => 9,
+            "Oct" => 10,
+            "Nov" => 11,
+            "Dec" => 12
         );
         
         $this->user = $connect_data['username'];
@@ -156,11 +161,48 @@ class ProcuFTPClient
         $this->updateStatus(PR_FTP_STATUS_NOT_READY);
     }
     
-    private function obtainFileTree($storage_callback, $storage_maxitems, $path = '/', $cur_depth = 0, $max_depth = 3)
+    private function parseRights($permissions) {
+      $mode = 0;
+
+      if ($permissions[1] == 'r') $mode += 0400;
+      if ($permissions[2] == 'w') $mode += 0200;
+      if ($permissions[3] == 'x') $mode += 0100;
+      else if ($permissions[3] == 's') $mode += 04100;
+      else if ($permissions[3] == 'S') $mode += 04000;
+
+      if ($permissions[4] == 'r') $mode += 040;
+      if ($permissions[5] == 'w') $mode += 020;
+      if ($permissions[6] == 'x') $mode += 010;
+      else if ($permissions[6] == 's') $mode += 02010;
+      else if ($permissions[6] == 'S') $mode += 02000;
+
+      if ($permissions[7] == 'r') $mode += 04;
+      if ($permissions[8] == 'w') $mode += 02;
+      if ($permissions[9] == 'x') $mode += 01;
+      else if ($permissions[9] == 't') $mode += 01001;
+      else if ($permissions[9] == 'T') $mode += 01000;
+
+     return $mode;
+    }
+
+    function chmodnum($chmod) {
+    $trans = array('-' => '0', 'r' => '4', 'w' => '2', 'x' => '1');
+    $chmod = substr(strtr($chmod, $trans), 1);
+    $array = str_split($chmod, 3);
+    return array_sum(str_split($array[0])) . array_sum(str_split($array[1])) . array_sum(str_split($array[2]));
+    }
+
+    private function obtainFileTree($storage_callback, $storage_maxitems, $path = '/', $cur_depth = 0, $max_depth = 3 /* TODO: */)
     {
         $this->printLog("Get List [" . $path . "]");
         
-        $arBuffer = ftp_rawlist($this->conn_id, $path);
+        if (!ftp_chdir($this->conn_id, $path)) {
+            $this->printLog("Failed chdir: " + $path);
+            $this->failedFolders[] = $path;
+            return;
+        }
+
+        $arBuffer = ftp_rawlist($this->conn_id, "-Ab");
         
         if (!empty($arBuffer)) {
             foreach ($arBuffer as $line) {
@@ -173,17 +215,28 @@ class ProcuFTPClient
                 }
                 
                 $ftp_entry = array(
-                    "name" => $fields[8], // TODO: parse symlinks 
-                    // "www -> ."    "mnegrecy.bget.ru/public_html/www -> ."    l    lrwxrwxrwx    60500    601    1    1421182800
+                    "name" => $fields[8], // TODO: handle non printable characters
                     "fullpath" => $path . $fields[8],
-                    "type" => $fields[0]{0},
-                    "permissions" => $fields[0], // TODO: convert into number
+                    "type" => $fields[0]{0}, // TODO: handle fifo, pipe, etc
+                    "permissions" => $this->parseRights($fields[0]),
                     "owner" => $fields[2],
                     "usergroup" => $fields[3],
                     "size" => $fields[4],
-                    "date" => mktime($hour, $minute, 0, $this->months[$fields[5]], $fields[6], $year) // TODO: check for valid values
+                    "date" => (mktime($hour, $minute, 0, $this->months[$fields[5]], $fields[6], $year) + $this->tz_offset)
                 );
                 
+                switch ($ftp_entry["type"]) {
+                    case "l": 
+                   	$tmp_l = explode(' -> ', $ftp_entry["fullpath"]);
+                   	$ftp_entry["fullpath"] = $tmp_l[0];
+                   	if ($ftp_entry["name"] == '.') $ftp_entry["name"] = $path;
+                	break;
+                    case "d": 
+                        $ftp_entry["size"] = -1;
+                	break;
+                }
+
+
                 array_push($this->listing_cache, $ftp_entry);
                 
                 if ($ftp_entry["type"] == "d") {
@@ -198,7 +251,7 @@ class ProcuFTPClient
         if ((count($this->listing_cache) >= $storage_maxitems) || ($cur_depth == 0)) {
             call_user_func($storage_callback, $this->listing_cache);
             $this->listing_cache = array();
-        }
+        }                     
     }
     
     public function prepareListing($storage_callback, $storage_maxitems)

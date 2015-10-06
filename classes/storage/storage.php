@@ -20,9 +20,12 @@ class ProcuStorage
     private $iface;
     private $client;
     private $cached_listing;
+    private $working_tmp_folder;
     
     function __construct($iface, $credentials)
     {
+        $this->working_tmp_folder = '';
+
         $this->iface = $iface;
         switch ($this->iface) {
             case PROCUSTORAGE_IFACE_SSH:
@@ -37,7 +40,7 @@ class ProcuStorage
     
     private function printLog($msg)
     {
-        echo "[" . date("d/m/Y h:m:i", time()) . "] " . $msg . "\n";
+//        echo "[" . date("d/m/Y h:m:i", time()) . "] " . $msg . "\n";
     }
     
     static function cacheData($data)
@@ -98,19 +101,23 @@ class ProcuStorage
         $name_fragment = preg_quote($name_fragment);
         $name_fragment = str_replace('@ANY@', '.*', $name_fragment);
         
-        // TODO: case sensivity
-        
         $num = count($this->cached_listing);
+        $modif = '';
+
+        if (!$case) {
+          $modif = 'i';
+        }
         
         for ($i = 0; $i < $num; $i++) {
             $f = false;
             
-            if (preg_match('~' . $name_fragment . '~', $this->cached_listing[$i][PROCUSTOR_NAME], $found)) {
+            if (preg_match('~' . $name_fragment . '~' . $modif, $this->cached_listing[$i][PROCUSTOR_NAME], $found)) {
                 array_push($res, $i);
                 $this->printLog("Found " . implode("\t", $this->cached_listing[$i]));
                 
-                if ($single)
+                if ($single) {
                     break;
+                }
             }
         }
         
@@ -121,18 +128,29 @@ class ProcuStorage
     {
         // TODO: implement
         $this->printLog("get " . $this->cached_listing[$index][PROCUSTOR_FULL_NAME]);
+        $this->client->download($this->cached_listing[$index][PROCUSTOR_FULL_NAME], $this->working_tmp_folder . '/download/' . $this->cached_listing[$index][PROCUSTOR_FULL_NAME]);
     }
     
     public function rmFile($index)
     {
-        // TODO: implement
         $this->printLog("rm " . $this->cached_listing[$index][PROCUSTOR_FULL_NAME]);
+        return ($this->client->delete($this->cached_listing[$index][PROCUSTOR_FULL_NAME]) == PROCU_FTP_OK);
     }
     
     public function backupFile($index)
     {
-        // TODO: implement
         $this->printLog("backup " . $this->cached_listing[$index][PROCUSTOR_FULL_NAME]);
+
+        // TODO: implement status
+        $this->client->download($this->cached_listing[$index][PROCUSTOR_FULL_NAME], $this->working_tmp_folder . '/backup/' . md5($this->cached_listing[$index][PROCUSTOR_FULL_NAME]));
+    }
+    
+    public function restoreFile($index)
+    {
+        $this->printLog("restore " . $this->cached_listing[$index][PROCUSTOR_FULL_NAME]);
+
+        // TODO: implement status
+        $this->client->upload($this->working_tmp_folder . '/backup/' . md5($this->cached_listing[$index][PROCUSTOR_FULL_NAME]), $this->cached_listing[$index][PROCUSTOR_FULL_NAME]);
     }
     
     public function get($list_or_file)
@@ -168,6 +186,17 @@ class ProcuStorage
         }
     }
     
+    public function restore($list_or_file)
+    {
+        if (is_array($list_or_file)) {
+            foreach ($list_or_file as $file) {
+                $this->restoreFile($file);
+            }
+        } else {
+            $this->restoreFile($list_or_file);
+        }
+    }
+    
     
 } // end of class
 
@@ -177,13 +206,14 @@ class ProcuStorage
 ////////////////////////////////////////////////////////////////////////////////////////
 date_default_timezone_set('Europe/Moscow');
 
-$cred['username'] = 'user';
-$cred['password'] = 'pass';
-$cred['host']     = 'host';
+$cred['username'] = '';
+$cred['password'] = '';
+$cred['host']     = '';
 $cred['path']     = '/';
+$cred['iface']    = PROCUSTORAGE_IFACE_FTP;
 
 $test_storage = new ProcuStorage(PROCUSTORAGE_IFACE_FTP, $cred);
 $test_storage->prepare(true);
-$list = $test_storage->findByName('wp*.php');
-$test_storage->rm($list);
+//$list = $test_storage->findByName('*.html');
+//$test_storage->rm($list);
 $test_storage->finalize();
